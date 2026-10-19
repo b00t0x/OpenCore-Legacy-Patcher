@@ -6,6 +6,15 @@ on:
     tags: ['*\+m.*']
     paths-ignore: ['docs/**']
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the verified packages as a release
+        type: boolean
+        default: false
+      release_notes:
+        description: Release notes (required when publishing)
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -18,6 +27,8 @@ jobs:
   build:
     if: github.repository == 'b00t0x/OpenCore-Legacy-Patcher'
     runs-on: macos-15-intel
+    permissions:
+      contents: write
     env:
       PYTHON: /Library/Frameworks/Python.framework/Versions/3.11/bin/python3
       OCLP_PYINSTALLER_ARCH: x86_64
@@ -80,17 +91,23 @@ jobs:
           pkgutil --expand-full dist/OpenCore-Patcher.pkg "$RUNNER_TEMP/expanded"
           "$PYTHON" - <<'PYCODE'
           import hashlib, json, os, plistlib, subprocess
+          import xml.etree.ElementTree as ET
           from pathlib import Path
           from opencore_legacy_patcher.constants import Constants
           def sha(path):
               with path.open('rb') as source:
                   return hashlib.file_digest(source, 'sha256').hexdigest()
           root = Path(os.environ['RUNNER_TEMP']) / 'expanded'
+          package_info = list(root.rglob('PackageInfo'))
+          assert package_info
+          assert all(ET.parse(path).getroot().get('version') == Constants().patcher_bundle_version for path in package_info)
           apps = list(root.rglob('OpenCore-Patcher.app'))
           assert len(apps) == 1
           app = apps[0]
           info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
           assert info['OCLPVersion'] == Constants().patcher_version
+          assert info['CFBundleVersion'] == Constants().patcher_bundle_version
+          assert info['CFBundleShortVersionString'] == Constants().patcher_bundle_version
           rule = '=certificate leaf = H"19FD838A17B096F42774B90A438950EC8052A4A5"'
           subprocess.run(['codesign', '--verify', '--strict', '--deep', '--all-architectures', '-R', rule + ' and identifier "com.dortania.opencore-legacy-patcher"', str(app)], check=True)
           helpers = list(root.rglob('com.dortania.opencore-legacy-patcher.privileged-helper'))
@@ -99,7 +116,7 @@ jobs:
           subprocess.run(['codesign', '--verify', '--strict', '--all-architectures', '-R', rule, str(helpers[0])], check=True)
           images = [p for p in app.rglob('Universal-Binaries.dmg') if not p.is_symlink()]
           assert len(images) == 1 and sha(images[0]) == sha(Path('Universal-Binaries.dmg'))
-          Path('dist/verification.json').write_text(json.dumps({'commit': os.environ['GITHUB_SHA'], 'version': info['OCLPVersion'], 'psp_sha256': sha(images[0]), 'helper_sha256': sha(helpers[0]), 'pkg_sha256': sha(Path('dist/OpenCore-Patcher.pkg')), 'signatures': 'verified after extraction'}, indent=2))
+          Path('dist/verification.json').write_text(json.dumps({'commit': os.environ['GITHUB_SHA'], 'version': info['OCLPVersion'], 'bundle_version': info['CFBundleVersion'], 'psp_sha256': sha(images[0]), 'helper_sha256': sha(helpers[0]), 'pkg_sha256': sha(Path('dist/OpenCore-Patcher.pkg')), 'signatures': 'verified after extraction'}, indent=2))
           PYCODE
           cd dist
           shasum -a 256 OpenCore-Patcher.pkg > sha256sum.txt
@@ -119,3 +136,17 @@ jobs:
           name: AutoPkg-Assets.pkg
           path: dist/AutoPkg-Assets.pkg
           if-no-files-found: error
+      - name: Publish verified packages
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          test -n "$RELEASE_NOTES"
+          version=$("$PYTHON" -c 'from opencore_legacy_patcher.constants import Constants; print(Constants().patcher_version)')
+          release_flag=$("$PYTHON" -c 'import sys; from packaging.version import Version; print("--prerelease" if Version(sys.argv[1]).is_prerelease else "--latest")' "$version")
+          printf '%s\n' "$RELEASE_NOTES" > "$RUNNER_TEMP/release-notes.md"
+          cd dist
+          shasum -a 256 OpenCore-Patcher.pkg AutoPkg-Assets.pkg verification.json > release-sha256sum.txt
+          gh release create "$version" OpenCore-Patcher.pkg AutoPkg-Assets.pkg release-sha256sum.txt verification.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$version" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" "$release_flag"

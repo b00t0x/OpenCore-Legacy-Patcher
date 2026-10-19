@@ -52,6 +52,13 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(result["Version"], "3.0.0-rc.3+m.2")
         self.assertEqual(result["Link"], "https://example.invalid/app.pkg")
 
+    def test_rc3_mod3_updates_from_mod2(self):
+        result = self.fetch(self.checker("3.0.0-rc.3+m.2"), [release("3.0.0-rc.3+m.3")])
+        self.assertEqual(result["Version"], "3.0.0-rc.3+m.3")
+
+    def test_rc_correction_does_not_downgrade_final_version(self):
+        self.assertIsNone(self.fetch(self.checker("3.0.0+m.1"), [release("3.0.0-rc.3+m.3")]))
+
     def test_older_release_does_not_update(self):
         self.assertIsNone(self.fetch(self.checker("3.0.0-rc.3+m.2"), [release("3.0.0-rc.3+m.1")]))
 
