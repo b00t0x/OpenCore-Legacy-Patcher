@@ -21,7 +21,6 @@ from .hardware.graphics import (
     intel_haswell,
     intel_broadwell,
     intel_skylake,
-    intel_xe,
 
     nvidia_tesla,
     nvidia_kepler,
@@ -85,7 +84,6 @@ class HardwarePatchsetValidation(StrEnum):
     SECURE_BOOT_MODEL_ENABLED     = "Validation: SecureBootModel is enabled"
     AMFI_ENABLED                  = "Validation: AMFI is enabled"
     WHATEVERGREEN_MISSING         = "Validation: WhateverGreen.kext missing"
-    WHATEVERXE_MISSING            = "Validation: WhateverXe.kext 0.2.2 or newer is required in EFI"
     FORCE_OPENGL_MISSING          = "Validation: Force OpenGL property missing"
     FORCE_COMPAT_MISSING          = "Validation: Force compat property missing"
     NVDA_DRV_MISSING              = "Validation: nvda_drv(_vrl) variable missing"
@@ -116,7 +114,6 @@ class HardwarePatchsetDetection:
             intel_haswell.IntelHaswell,
             intel_broadwell.IntelBroadwell,
             intel_skylake.IntelSkylake,
-            intel_xe.IntelXeLP,
 
             nvidia_tesla.NvidiaTesla,
             nvidia_kepler.NvidiaKepler,
@@ -481,7 +478,6 @@ class HardwarePatchsetDetection:
         missing_kernel_debug_kit      = False
         requires_network_connection   = False
         has_nvidia_web_drivers        = False
-        has_intel_xe                  = False
         highest_amfi_level            = amfi_detect.AmfiConfigDetectLevel.NO_CHECK
         required_sip_configs          = []
 
@@ -512,8 +508,6 @@ class HardwarePatchsetDetection:
 
             if item.name() == "Graphics: Nvidia Web Drivers":
                 has_nvidia_web_drivers = True
-            if isinstance(item, intel_xe.IntelXeLP):
-                has_intel_xe = True
 
             for config in item.required_system_integrity_protection_configurations():
                 if config not in required_sip_configs:
@@ -548,7 +542,6 @@ class HardwarePatchsetDetection:
             HardwarePatchsetValidation.AMFI_ENABLED:                self._validation_check_amfi_enabled(highest_amfi_level),
             HardwarePatchsetValidation.REPATCHING_NOT_SUPPORTED:    self._validation_check_repatching_not_possible(),
             HardwarePatchsetValidation.WHATEVERGREEN_MISSING:       self._validation_check_whatevergreen_missing() if has_nvidia_web_drivers is True else False,
-            HardwarePatchsetValidation.WHATEVERXE_MISSING:          packaging.version.parse(utilities.check_kext_loaded("org.b00t0x.WhateverXe") or "0") < packaging.version.parse("0.2.2") if has_intel_xe else False,
             HardwarePatchsetValidation.FORCE_OPENGL_MISSING:        self._validation_check_force_opengl_missing()  if has_nvidia_web_drivers is True else False,
             HardwarePatchsetValidation.FORCE_COMPAT_MISSING:        self._validation_check_force_compat_missing()  if has_nvidia_web_drivers is True else False,
             HardwarePatchsetValidation.NVDA_DRV_MISSING:            self._validation_check_nvda_drv_missing()      if has_nvidia_web_drivers is True else False,

@@ -4,8 +4,6 @@ boot_system.py: Boot and System Kernel Collection management
 
 import logging
 import subprocess
-import plistlib
-from pathlib import Path
 
 from ..base.cache import BaseKernelCache
 from ....support  import subprocess_wrapper
@@ -25,23 +23,6 @@ class BootSystemKernelCollections(BaseKernelCache):
         Generate kmutil arguments for creating or updating
         the boot, system and auxiliary kernel collections
         """
-
-        extensions = Path(self.mount_location) / "System/Library/Extensions"
-        if self.detected_os == os_data.os_data.big_sur and (extensions / "AppleIntelTGLCompat.kext").is_dir():
-            with (Path(self.mount_location) / "System/Library/CoreServices/SystemVersion.plist").open("rb") as file:
-                build = plistlib.load(file)["ProductBuildVersion"]
-            if build == "20G1443":
-                # update-all can omit the transplanted framebuffer/provider.
-                # Keep the native BootKC and explicitly include the Xe SystemKC modules.
-                args = ["/usr/bin/kmutil", "create", "-z", "-V", "release", "-n", "sys",
-                        "-R", self.mount_location,
-                        "-B", "/System/Library/KernelCollections/BootKernelExtensions.kc",
-                        "-S", "/System/Library/KernelCollections/SystemKernelExtensions.kc",
-                        "--no-authentication"]
-                for identifier in ("com.apple.driver.AppleIntelTGLGraphicsFramebuffer",
-                                   "com.apple.driver.AppleIntelTGLGraphics", "org.b00t0x.AppleIntelTGLCompat"):
-                    args += ["-b", identifier]
-                return args
 
         args = ["/usr/bin/kmutil"]
 
